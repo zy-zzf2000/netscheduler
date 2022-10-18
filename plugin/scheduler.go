@@ -2,6 +2,10 @@ package plugin
 
 import (
 	"context"
+	"math"
+	"strconv"
+
+	"netbalance/util"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,12 +23,12 @@ const Name = "BalanceNetscheduler"
 
 //BWNA调度器插件结构体
 type BalanceNetScheduling struct {
-	handle              framework.Handle //调度器句柄,用于访问kube-apiserver
-	resourceToWeightMap map[string]int64 //存放CPU、内存与网络权重的map
+	handle              framework.Handle   //调度器句柄,用于访问kube-apiserver
+	resourceToWeightMap map[string]float64 //存放CPU、内存与网络权重的map
 }
 
 type NetResourceMap struct {
-	mmap map[string]int64
+	mmap map[string]float64
 }
 
 //根据文档，Clone方法需要实现浅拷贝
@@ -44,7 +48,7 @@ func New(configuration runtime.Object, f framework.Handle) (framework.Plugin, er
 	//TODO:后续实现从配置文件中读取权重
 	plugin := &BalanceNetScheduling{}
 	plugin.handle = f
-	plugin.resourceToWeightMap = map[string]int64{
+	plugin.resourceToWeightMap = map[string]float64{
 		"cpu":    1,
 		"memory": 1,
 		"net":    1,
@@ -78,7 +82,7 @@ func (n *BalanceNetScheduling) PreFilter(ctx context.Context, state *framework.C
 
 	if err != nil {
 		capacityMap := NetResourceMap{}
-		capacityMap.mmap = make(map[string]int64)
+		capacityMap.mmap = make(map[string]float64)
 		//初始化NodeNetCapacityMap
 		for _, node := range nodeList {
 			//capacityMap.mmap[node.Node().Name] = node.Node().Status.Capacity.;
@@ -103,27 +107,64 @@ func (n *BalanceNetScheduling) Score(ctx context.Context, state *framework.Cycle
 		3.计算节点运行该Pod后的CPU、内存、网络资源的剩余量
 		4.带入公式计算得分
 	*/
+	var Cnet, Cmemory, Ccpu float64
+	var Rnet, Rmemory, Rcpu float64
+	var Tnet, Tmemory, Tcpu float64
+	var Unet, Umemory, Ucpu float64
 	//获取节点CPU、内存、网络资源的Capacity
 	node, err := n.handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
 	if err != nil {
 		return 0, framework.NewStatus(framework.Error, err.Error())
 	}
-	cpuCapacity := node.Node().Status.Capacity.Cpu().Value()
-	memoryCapacity := node.Node().Status.Capacity.Memory().Value()
+
 	capacityMap, err := state.Read("NodeNetCapacityMap")
 	if err != nil {
 		return 0, framework.NewStatus(framework.Error, err.Error())
 	}
-	netCapacity := capacityMap.(*NetResourceMap).mmap[nodeName]
+	Cnet = capacityMap.(*NetResourceMap).mmap[nodeName]
+	Ccpu = node.Node().Status.Capacity.Cpu().AsApproximateFloat64()
+	Cmemory = node.Node().Status.Capacity.Memory().AsApproximateFloat64()
 
-	//获取节点CPU、内存、网络资源的已经申请的数目
-	cpuAllocatable := node.Node().Status.Allocatable.Cpu().Value()
-	cpuUsed := cpuCapacity - cpuAllocatable
-	memoryAllocatable := node.Node().Status.Allocatable.Memory().Value()
-	memoryUsed := memoryCapacity - memoryAllocatable
-	//query: irate(node_network_transmit_bytes_total{instance="116.56.140.131:9100", device!~"lo|bond[0-9]|cbr[0-9]|veth.*"}[5m]) > 0 ,单位为bytes/sec
+	//获取节点CPU、内存、网络资源的已经被使用的数目
+	cpuAllocatable := node.Node().Status.Allocatable.Cpu().AsApproximateFloat64()
+	memoryAllocatable := node.Node().Status.Allocatable.Memory().AsApproximateFloat64()
 
-	return 0, nil
+	Ucpu = Ccpu - cpuAllocatable
+	Umemory = Cmemory - memoryAllocatable
+	Unet = util.QueryNetUsageByNode(nodeName)
+
+	//获取当前pod的CPU、内存、网络资源的申请数目
+	containerNum := len(p.Spec.Containers)
+	Rcpu = 0
+	Rmemory = 0
+	Rnet = 0
+	for i := 0; i < containerNum; i++ {
+		Rcpu += float64(p.Spec.Containers[i].Resources.Requests.Cpu().Value())
+		Rmemory += float64(p.Spec.Containers[i].Resources.Requests.Memory().Value())
+		net, err := strconv.ParseFloat((p.Labels["netRequest"]), 64)
+		if err != nil {
+			return 0, framework.NewStatus(framework.Error, err.Error())
+		}
+		Rnet += net
+	}
+
+	//计算节点运行该Pod后的CPU、内存、网络资源的使用量
+	Tcpu = Ucpu + Rcpu
+	Tmemory = Umemory + Rmemory
+	Tnet = Unet + Rnet
+
+	//计算节点运行该Pod后的CPU、内存、网络资源的剩余量
+	ECpu := Ccpu - Tcpu
+	Ememory := Cmemory - Tmemory
+	Enet := Cnet - Tnet
+
+	//带入公式计算得分
+	scorePart1 := (1 / (n.resourceToWeightMap["cpu"] + n.resourceToWeightMap["memory"] + n.resourceToWeightMap["net"])) *
+		((ECpu*n.resourceToWeightMap["cpu"]/Ccpu + Ememory*n.resourceToWeightMap["memory"]/Cmemory) + Enet*float64(n.resourceToWeightMap["net"])/Cnet)
+	scorePart2 := math.Abs(Ucpu/Ccpu-Umemory/Cmemory) + math.Abs(Ucpu/Ccpu-Unet/Cnet) + math.Abs(Unet/Cnet-Umemory/Cmemory)
+	finalScore := scorePart1 - scorePart2/3
+
+	return int64(finalScore), framework.NewStatus(framework.Success, "")
 }
 
 func (n *BalanceNetScheduling) ScoreExtensions() framework.ScoreExtensions {

@@ -29,7 +29,7 @@ func InitClient() api.Client {
 	return client
 }
 
-func QueryNetUsageByNode(nodeName string) int64 {
+func QueryNetUsageByNode(nodeName string) float64 {
 	//首先根据client获取v1的api
 	v1api := v1.NewAPI(PrometheusClient)
 	//创建一个上下文，用于取消或超时
@@ -51,7 +51,8 @@ func QueryNetUsageByNode(nodeName string) int64 {
 	for i := 0; i < resultVec.Len(); i++ {
 		sum += float64(resultVec[i].Value)
 	}
-
+	//转换成Mb/s
+	sum = sum / 1024 / 1024
 	DPrinter("查询结果: %v\n", sum)
-	return 0
+	return sum
 }
