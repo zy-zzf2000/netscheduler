@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 )
 
 var PrometheusClient = InitClient()
@@ -44,6 +45,13 @@ func QueryNetUsageByNode(nodeName string) int64 {
 	if len(warnings) > 0 {
 		fmt.Printf("Warnings: %v\n", warnings)
 	}
-	DPrinter("查询结果: %v\n", result)
+	//累加所有的值
+	var sum float64
+	resultVec := result.(model.Vector)
+	for i := 0; i < resultVec.Len(); i++ {
+		sum += float64(resultVec[i].Value)
+	}
+
+	DPrinter("查询结果: %v\n", sum)
 	return 0
 }
