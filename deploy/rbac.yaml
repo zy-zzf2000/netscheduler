@@ -15,7 +15,7 @@ rules:
   - apiGroups:
       - ""
     resourceNames:
-      - BalanceNetscheduler
+      - balancenetscheduler
     resources:
       - endpoints
     verbs:
