@@ -19,7 +19,7 @@ var (
 )
 
 //自定义调度器名字
-const Name = "BalanceNetscheduler"
+const Name = "balancenetscheduler"
 
 //BWNA调度器插件结构体
 type BalanceNetScheduling struct {

@@ -48,7 +48,7 @@ spec:
           name: scheduler-config
       containers:
       - name: balancenetscheduler-pod
-        image: zyzzf/netbalanceplugin
+        image: zyzzf/netbalanceplugin:v1
         imagePullPolicy: IfNotPresent
         args:
         - balancenetscheduler
