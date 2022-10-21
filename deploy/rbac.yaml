@@ -1,7 +1,7 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: BalanceNetscheduler-cr
+  name: ouo-cr
 rules:
   - apiGroups:
       - ""
@@ -15,7 +15,7 @@ rules:
   - apiGroups:
       - ""
     resourceNames:
-      - BalanceNetscheduler
+      - ouo-scheduler
     resources:
       - endpoints
     verbs:
@@ -136,19 +136,19 @@ rules:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: BalanceNetscheduler-sa
+  name: ouo-sa
   namespace: kube-system
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: BalanceNetscheduler-crb
+  name: ouo-crb
   namespace: kube-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: BalanceNetscheduler-cr
+  name: ouo-cr
 subjects:
   - kind: ServiceAccount
-    name: BalanceNetscheduler-sa
+    name: ouo-sa
     namespace: kube-system

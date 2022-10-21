@@ -9,7 +9,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
 //实现PreFilterPlugin，ScorePlugin接口
@@ -19,7 +19,7 @@ var (
 )
 
 //自定义调度器名字
-const Name = "BalanceNetscheduler"
+const Name = "ouo-scheduler"
 
 //BWNA调度器插件结构体
 type BalanceNetScheduling struct {
